@@ -1,8 +1,9 @@
-import pickle
 import torch
+import pickle
 from argparse import ArgumentParser, RawTextHelpFormatter
 from src.learning import LearningModel
-from src.events import Events
+from src.dataset import Dataset
+from utils.common import set_seed
 
 # Global control for device
 CUDA = True
@@ -25,6 +26,9 @@ def parse_arguments():
     )
     parser.add_argument(
         '--init_path', type=str, required=False, default="", help='A model path for the initialization'
+    )
+    parser.add_argument(
+        '--mask_path', type=str, required=False, default="", help='Path of the file storing node pairs for masking'
     )
     parser.add_argument(
         '--log', type=str, required=False, default=None, help='Path of the log file'
@@ -71,6 +75,7 @@ def process(args):
     dataset_path = args.dataset
     model_path = args.model_path
     init_path = args.init_path
+    mask_path = args.mask_path
     log_file_path = args.log
 
     bins_num = args.bins_num
@@ -86,27 +91,25 @@ def process(args):
     seed = args.seed
     verbose = args.verbose
 
+    # Set the seed
+    set_seed(seed=seed)
+
     # Load the dataset
-    all_events = Events(seed=seed)
-    all_events.read(dataset_path)
+    dataset = Dataset(path=dataset_path, normalize=False, verbose=verbose, seed=seed)
     if batch_size <= 0:
-        batch_size = all_events.number_of_nodes()
+        batch_size = dataset.number_of_nodes()
 
     # Get the number of nodes
-    nodes_num = all_events.number_of_nodes()
-    data = all_events.get_pairs(), all_events.get_events()
+    nodes_num = dataset.number_of_nodes()
+    data = dataset.get_pairs(), dataset.get_events()
 
-    if verbose:
-        print(f"- The dataset statistics:")
-        print(f"\t+ The number of nodes: {all_events.number_of_nodes()}")
-        print(f"\t+ The total number of edges: {all_events.number_of_total_events()}")
-        print(f"\t+ The number of pairs having events: {all_events.number_of_event_pairs()}")
-        print(f"\t+ Average number of events: {all_events.number_of_total_events()/all_events.number_of_event_pairs()}")
-        print(f"\t+ The initial time of the dataset: {all_events.get_min_event_time()}")
-        print(f"\t+ The last time of the dataset: {all_events.get_max_event_time()}")
-
-    assert all_events.get_min_event_time() >= 0 or all_events.get_max_event_time() <= 1.0, \
+    assert dataset.get_min_event_time() >= 0 and dataset.get_max_event_time() <= 1.0, \
         "The dataset contains events smaller than 0 or greater than 1.0!"
+
+    # Load the node pairs for masking if given
+    if mask_path != "":
+        with open(mask_path, 'rb') as f:
+            masked_pairs = torch.as_tensor(pickle.load(f), dtype=torch.int, device=torch.device(device))
 
     if verbose:
         print(f"- The active device is {device}.")
@@ -115,10 +118,10 @@ def process(args):
     if init_path == "":
 
         lm = LearningModel(
-            data=data, nodes_num=nodes_num, bins_num=bins_num, dim=dim, last_time=last_time, batch_size=batch_size,
-            prior_k=K, prior_lambda=prior_lambda,
-            learning_rate=learning_rate, epoch_num=epoch_num, steps_per_epoch=steps_per_epoch,
-            verbose=verbose, seed=seed, device=torch.device(device)
+            data=data, nodes_num=nodes_num, bins_num=bins_num, dim=dim, last_time=last_time,
+            prior_k=K, prior_lambda=prior_lambda, masked_pairs=masked_pairs,
+            learning_rate=learning_rate, batch_size=batch_size, epoch_num=epoch_num, steps_per_epoch=steps_per_epoch,
+            device=torch.device(device), verbose=verbose, seed=seed
         )
 
     else:

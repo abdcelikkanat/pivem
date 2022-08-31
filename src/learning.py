@@ -8,8 +8,8 @@ import utils
 
 class LearningModel(BaseModel, torch.nn.Module):
 
-    def __init__(self, data, nodes_num, bins_num, dim, last_time: float, approach="nhpp",
-                 prior_k: int = 10, prior_lambda: float = 1.0,
+    def __init__(self, data, nodes_num, bins_num, dim, last_time: float, approach: str = "nhpp",
+                 prior_k: int = 10, prior_lambda: float = 1.0, masked_pairs: torch.Tensor = None,
                  learning_rate: float = 0.1, batch_size: int = None, epoch_num: int = 100,
                  steps_per_epoch=10, device: torch.device = None, verbose: bool = False, seed: int = 19):
 
@@ -33,8 +33,11 @@ class LearningModel(BaseModel, torch.nn.Module):
             seed=seed
         )
 
+        # Get the pairs and events
         self.__events_pairs = data[0]
         self.__events = data[1]
+
+        # The approach used for learning the representations [ nhpp or survival method ]
         self.__approach = approach
 
         # Parameters for optimization
@@ -47,6 +50,10 @@ class LearningModel(BaseModel, torch.nn.Module):
         self.__learning_param_epoch_weights = [1, 1, 1]
         self.__optimizer = None
 
+        # Node pairs which will be discarded during the optimization
+        self.__masked_pairs = masked_pairs
+
+        # A list to store the training losses
         self.__loss = []
 
         # Pre-computation of some coefficients
@@ -83,7 +90,6 @@ class LearningModel(BaseModel, torch.nn.Module):
                 torch.as_tensor(events[pairIdx], dtype=torch.float, device=self.get_device()), self.get_bin_width()
             )
             bin_idx[bin_idx == bins_num] = bins_num - 1
-
             events_count[dictIdx].index_add_(
                 dim=0, index=bin_idx,
                 source=torch.ones(len(bin_idx), dtype=torch.int, device=self.get_device())
@@ -253,16 +259,26 @@ class LearningModel(BaseModel, torch.nn.Module):
 
         self.train()
 
-        sampled_nodes = torch.multinomial(
+        batch_nodes = torch.multinomial(
             torch.ones(self.get_number_of_nodes(), dtype=torch.float, device=self.get_device()),
             self.__batch_size, replacement=False
         )
-        sampled_nodes, _ = torch.sort(sampled_nodes, dim=0)
-        batch_pairs = torch.combinations(sampled_nodes, r=2).T.type(torch.int)
+        batch_nodes, _ = torch.sort(batch_nodes, dim=0)
+        batch_pairs = torch.combinations(batch_nodes, r=2).T.type(torch.int)
+
+        # Remove the masked pairs from the batch pairs
+        self.__masked_pairs = torch.as_tensor([[0, 1], [1, 2], [1, 3]], dtype=torch.int).T
+
+        if self.__masked_pairs is not None:
+            dist = torch.cdist(
+                batch_pairs.T.unsqueeze(0).type(torch.float), self.__masked_pairs.T.unsqueeze(0).type(torch.float)
+            ).squeeze(0)
+            unmatched_indices = dist.nonzero()[:, 0]
+            batch_pairs = torch.index_select(batch_pairs, dim=1, index=unmatched_indices)
 
         # Forward pass
         average_batch_loss = self.forward(
-            nodes=sampled_nodes, all_pairs=batch_pairs,
+            nodes=batch_nodes, pairs=batch_pairs,
             events_count=torch.as_tensor(
                 [self.__events_count.get(
                     utils.pairIdx2flatIdx(pair[0], pair[1], self.get_number_of_nodes()),
@@ -289,12 +305,12 @@ class LearningModel(BaseModel, torch.nn.Module):
 
         return average_batch_loss
 
-    def forward(self, nodes: torch.Tensor, all_pairs: torch.Tensor,
+    def forward(self, nodes: torch.Tensor, pairs: torch.Tensor,
                 events_count: torch.Tensor, alpha1: torch.Tensor, alpha2: torch.Tensor, batch_num: int):
 
         nll = 0
         if self.__approach == "nhpp":
-            nll = nll + self.get_negative_log_likelihood(all_pairs, events_count, alpha1, alpha2)
+            nll = nll + self.get_negative_log_likelihood(pairs, events_count, alpha1, alpha2)
 
         elif self.__approach == "survival":
             pass #nll += self.get_survival_log_likelihood(nodes, event_times, event_node_pairs)
@@ -335,7 +351,7 @@ class LearningModel(BaseModel, torch.nn.Module):
             'data': [self.__events_pairs, self.__events ],
             'nodes_num': self.get_number_of_nodes(), 'bins_num': self.get_bins_num(), 'dim': self.get_dim(),
             'last_time': self.get_last_time(), 'approach': self.__approach,
-            'prior_k': self.get_prior_k(), 'prior_lambda': self.get_prior_lambda(),
+            'prior_k': self.get_prior_k(), 'prior_lambda': self.get_prior_lambda(), 'masked_pairs': self.__masked_pairs,
             'learning_rate': self.__learning_rate, 'batch_size': self.__batch_size, 'epoch_num': self.__epoch_num,
             'steps_per_epoch': self.__steps_per_epoch,
             'device': self.get_device(), 'verbose': self.get_verbose(), 'seed': self.get_seed(),

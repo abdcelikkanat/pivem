@@ -161,10 +161,12 @@ class ConstructionModel(BaseModel):
 
         return self.__events
 
-    def save(self, folder_path):
+    def save(self, folder_path, normalize=False):
         events, pairs = [], []
         for i, j in utils.pair_iter(n=self.get_number_of_nodes()):
             pair_events = self.__events[i][j]
+            if normalize:
+                pair_events = [e / self.get_last_time() for e in pair_events]
             if len(pair_events):
                 pairs.append([i, j])
                 events.append(pair_events)

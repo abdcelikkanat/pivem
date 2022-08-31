@@ -136,4 +136,4 @@ dmypy.json
 *.zip
 
 *.result
-datasets/synthetic/*
+datasets/*
