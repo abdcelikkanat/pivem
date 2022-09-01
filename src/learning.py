@@ -269,9 +269,6 @@ class LearningModel(BaseModel, torch.nn.Module):
         batch_nodes, _ = torch.sort(batch_nodes, dim=0)
         batch_pairs = torch.combinations(batch_nodes, r=2).T.type(torch.int)
 
-        # Remove the masked pairs from the batch pairs
-        self.__masked_pairs = torch.as_tensor([[0, 1], [1, 2], [1, 3]], dtype=torch.int).T
-
         if self.__masked_pairs is not None:
             dist = torch.cdist(
                 batch_pairs.T.unsqueeze(0).type(torch.float), self.__masked_pairs.T.unsqueeze(0).type(torch.float)
