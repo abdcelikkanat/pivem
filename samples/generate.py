@@ -23,7 +23,10 @@ parser.add_argument(
     '--pr', type=float, required=False, default=0.05, help='Prediction ratio'
 )
 parser.add_argument(
-    '--cr', type=float, required=False, default=0.05, help='Completion ratio'
+    '--mr', type=float, required=False, default=0.025, help='Masking ratio'
+)
+parser.add_argument(
+    '--cr', type=float, required=False, default=0.025, help='Completion ratio'
 )
 parser.add_argument(
     '--trials_num', type=int, required=False, default=10, help='Number of trials'
@@ -43,6 +46,7 @@ input_folder = args.input_folder
 output_folder = args.output_folder
 log_file = args.log_file
 prediction_ratio = args.pr
+masking_ratio = args.mr
 completion_ratio = args.cr
 trials_num = args.trials_num
 verbose = args.verbose
@@ -59,15 +63,17 @@ if log_file != "":
 
 
 ########################################################################################################################
-# Sample the pairs for the completion experiment and masking
+# Sample the pairs for masking and the completion experiment
 
 dataset = Dataset(path=input_folder, normalize=True, seed=seed)
 nodes_num = dataset.number_of_nodes()
 pairs, events = dataset.get_pairs(), dataset.get_events()
 
-# We asssume that sample size is even number
-sample_size = int(dataset.number_of_event_pairs() * completion_ratio)
-sample_size = sample_size if sample_size % 2 == 0 else sample_size + 1
+# We assume that sample size is even number
+completion_size = int(dataset.number_of_event_pairs() * completion_ratio)
+completion_size = completion_size if completion_size % 2 == 0 else completion_size + 1
+mask_size = int(dataset.number_of_event_pairs() * masking_ratio)
+mask_size = mask_size if mask_size % 2 == 0 else mask_size + 1
 if verbose:
     print("- For the completion experiment, pair sampling is being performed...")
 residual_pairs, residual_events = pairs.copy(), events.copy()
@@ -76,7 +82,7 @@ for trial_idx in range(1, trials_num+1):
     residual_pairs, residual_events = shuffle(residual_pairs, residual_events)
     # Keep the number of nodes in the residual network fixed
     # Size is (2 x sample_size) since we also need mask pairs for validation
-    if len(np.unique(residual_pairs[:-2*sample_size])) == nodes_num or sample_size == 0:
+    if len(np.unique(residual_pairs[:-(completion_size+mask_size)])) == nodes_num:
         print(f"\t+ Successful! (Trial:{trial_idx}/{trials_num})")
         break
     else:
@@ -85,11 +91,11 @@ for trial_idx in range(1, trials_num+1):
 
 assert trial_idx <= trials_num, "\t+ Completion pairs could not be generated! Please choose a smaller ratio!"
 
-residual_pairs, completion_pairs = residual_pairs[:-sample_size], residual_pairs[-sample_size:]
-residual_events, completion_events = residual_events[:-sample_size], residual_events[-sample_size:]
+residual_pairs, completion_pairs = residual_pairs[:-completion_size], residual_pairs[-completion_size:]
+residual_events, completion_events = residual_events[:-completion_size], residual_events[-completion_size:]
 
-masked_pairs = residual_pairs[-sample_size:]
-masked_events = residual_events[-sample_size:]  # In fact, we don't need to store the masked events
+masked_pairs = residual_pairs[-mask_size:]
+masked_events = residual_events[-mask_size:]  # In fact, we don't need to store the masked events
 
 ########################################################################################################################
 # Split the residual network and completion pairs
@@ -152,13 +158,13 @@ if verbose:
     print(f"\t+ The masking set has {len(masked_pairs)} pairs.")
     all_events = [e for te in masked_events for e in te]
     print(f"\t\t* The min/max events in masking set are {min(all_events)}/{max(all_events)}.")
-    if sample_size != len(completion_pairs):
+    if completion_size != len(completion_pairs):
         print("\t+ {} pairs have been removed due to the prediction set (Desired: {}).".format(
-            sample_size-len(completion_pairs), sample_size)
+            completion_size-len(completion_pairs), completion_size)
         )
-    if sample_size != len(masked_pairs):
+    if mask_size != len(masked_pairs):
         print("\t+ {} pairs have been removed due to the prediction set (Desired: {}).".format(
-            sample_size-len(masked_pairs), sample_size)
+            mask_size-len(masked_pairs), mask_size)
         )
 
 ########################################################################################################################
@@ -168,9 +174,9 @@ if verbose:
 
 # Save the residual pair and events
 with open(os.path.join(output_folder, "pairs.pkl"), 'wb') as f:
-    pickle.dump(residual_pairs, f)
+    pickle.dump(train_pairs, f)
 with open(os.path.join(output_folder, "events.pkl"), 'wb') as f:
-    pickle.dump(residual_events, f)
+    pickle.dump(train_events, f)
 if dataset.get_groups() is not None:
     with open(os.path.join(output_folder, "node2group.pkl"), 'wb') as f:
         pickle.dump(dataset.get_groups(), f)
