@@ -110,7 +110,7 @@ def process(args):
     masked_pairs = None
     if mask_path != "":
         with open(mask_path, 'rb') as f:
-            masked_pairs = torch.as_tensor(pickle.load(f), dtype=torch.int, device=torch.device(device))
+            masked_pairs = torch.as_tensor(pickle.load(f), dtype=torch.int, device=torch.device(device)).T
 
     if verbose:
         print(f"- The active device is {device}.")
