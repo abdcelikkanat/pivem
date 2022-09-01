@@ -53,8 +53,8 @@ class LearningModel(BaseModel, torch.nn.Module):
         # Node pairs which will be discarded during the optimization
         self.__masked_pairs = masked_pairs
 
-        # A list to store the training losses
-        self.__loss = []
+        # Lists to store the training losses and nll
+        self.__loss, self.__nll = [], []
 
         # Pre-computation of some coefficients
         self.__events_count, self.__alpha1, self.__alpha2 = self.compute_coefficients(
@@ -142,8 +142,9 @@ class LearningModel(BaseModel, torch.nn.Module):
 
             if loss_file_path is not None:
                 with open(loss_file_path, 'w') as f:
-                    for batch_losses in self.__loss:
-                        f.write(f"{' '.join('{:.3f}'.format(loss) for loss in batch_losses)}\n")
+                    for batch_losses, nll_losses in zip(self.__loss, self.__nll):
+                        f.write(f"Loss: {' '.join('{:.3f}'.format(loss) for loss in batch_losses)}\n")
+                        f.write(f"Nll: {' '.join('{:.3f}'.format(loss) for loss in nll_losses)}\n")
 
         elif learning_type == "alt":
 
@@ -227,11 +228,13 @@ class LearningModel(BaseModel, torch.nn.Module):
 
         total_batch_loss = 0
         self.__loss.append([])
+        self.__nll.append([])
         for batch_num in range(self.__steps_per_epoch):
 
-            batch_loss = self.__train_one_batch(batch_num)
+            batch_loss, batch_nll = self.__train_one_batch(batch_num)
 
             self.__loss[-1].append(batch_loss)
+            self.__nll[-1].append(batch_nll)
 
             total_batch_loss += batch_loss
 
@@ -277,7 +280,7 @@ class LearningModel(BaseModel, torch.nn.Module):
             batch_pairs = torch.index_select(batch_pairs, dim=1, index=unmatched_indices)
 
         # Forward pass
-        average_batch_loss = self.forward(
+        average_batch_loss, average_batch_nll = self.forward(
             nodes=batch_nodes, pairs=batch_pairs,
             events_count=torch.as_tensor(
                 [self.__events_count.get(
@@ -303,14 +306,14 @@ class LearningModel(BaseModel, torch.nn.Module):
             batch_num=batch_num
         )
 
-        return average_batch_loss
+        return average_batch_loss, average_batch_nll
 
     def forward(self, nodes: torch.Tensor, pairs: torch.Tensor,
                 events_count: torch.Tensor, alpha1: torch.Tensor, alpha2: torch.Tensor, batch_num: int):
 
-        nll = 0
+        total = 0
         if self.__approach == "nhpp":
-            nll = nll + self.get_negative_log_likelihood(pairs, events_count, alpha1, alpha2)
+            nll = self.get_negative_log_likelihood(pairs, events_count, alpha1, alpha2)
 
         elif self.__approach == "survival":
             pass #nll += self.get_survival_log_likelihood(nodes, event_times, event_node_pairs)
@@ -319,9 +322,10 @@ class LearningModel(BaseModel, torch.nn.Module):
             raise ValueError("Invalid approach name!")
 
         # Add prior
-        nll = nll + self.get_neg_log_prior(batch_nodes=nodes, batch_num=batch_num)
+        prior = self.get_neg_log_prior(batch_nodes=nodes, batch_num=batch_num)
+        total = nll + prior
 
-        return nll
+        return total, nll
 
     def __set_gradients(self, beta_grad=None, x0_grad=None, v_grad=None, reg_params_grad=None):
 
