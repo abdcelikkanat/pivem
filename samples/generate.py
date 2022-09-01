@@ -125,7 +125,9 @@ for pair, pair_events in zip(residual_pairs, residual_events):
         pred_events.pop()
 
 assert len(np.unique(train_pairs)) == nodes_num, \
-    "Training set contains less number of nodes, please choose different prediction ratio!"
+    "Training set contains less number of nodes, please choose different prediction ratio! {}/{}".format(
+        len(np.unique(train_pairs)), nodes_num
+    )
 
 # Remove the event times greater than the split ratio in the testing and masking events
 idx = 0
