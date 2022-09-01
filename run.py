@@ -107,9 +107,10 @@ def process(args):
         "The dataset contains events smaller than 0 or greater than 1.0!"
 
     # Load the node pairs for masking if given
+    masked_pairs = None
     if mask_path != "":
         with open(mask_path, 'rb') as f:
-            masked_pairs = torch.as_tensor(pickle.load(f), dtype=torch.int, device=torch.device(device))
+            masked_pairs = torch.as_tensor(pickle.load(f), dtype=torch.int), #device=torch.device(device))
 
     if verbose:
         print(f"- The active device is {device}.")
