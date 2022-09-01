@@ -91,8 +91,12 @@ for trial_idx in range(1, trials_num+1):
 
 assert trial_idx <= trials_num, "\t+ Completion pairs could not be generated! Please choose a smaller ratio!"
 
-residual_pairs, completion_pairs = residual_pairs[:-completion_size], residual_pairs[-completion_size:]
-residual_events, completion_events = residual_events[:-completion_size], residual_events[-completion_size:]
+if completion_size > 0:
+    residual_pairs, completion_pairs = residual_pairs[:-completion_size], residual_pairs[-completion_size:]
+    residual_events, completion_events = residual_events[:-completion_size], residual_events[-completion_size:]
+else:
+    completion_pairs = []
+    completion_events = []
 
 masked_pairs = residual_pairs[-mask_size:]
 masked_events = residual_events[-mask_size:]  # In fact, we don't need to store the masked events
@@ -102,7 +106,6 @@ masked_events = residual_events[-mask_size:]  # In fact, we don't need to store 
 
 assert 0 <= prediction_ratio < 1.0, "Prediction ratio must be smaller than 1.0!"
 split_time = 1.0 - prediction_ratio
-
 train_pairs, train_events = [], []
 pred_pairs, pred_events = [], []
 for pair, pair_events in zip(residual_pairs, residual_events):
@@ -155,8 +158,9 @@ if verbose:
     all_events = [e for te in train_events for e in te]
     print(f"\t\t* The min/max events in training set are {min(all_events)}/{max(all_events)}.")
     print(f"\t+ The completion set has {len(completion_pairs)} pairs.")
-    all_events = [e for te in completion_events for e in te]
-    print(f"\t\t* The min/max events in completion set are {min(all_events)}/{max(all_events)}.")
+    if len(completion_pairs):
+        all_events = [e for te in completion_events for e in te]
+        print(f"\t\t* The min/max events in completion set are {min(all_events)}/{max(all_events)}.")
     print(f"\t+ The masking set has {len(masked_pairs)} pairs.")
     all_events = [e for te in masked_events for e in te]
     print(f"\t\t* The min/max events in masking set are {min(all_events)}/{max(all_events)}.")
