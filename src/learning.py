@@ -267,14 +267,33 @@ class LearningModel(BaseModel, torch.nn.Module):
             self.__batch_size, replacement=False
         )
         batch_nodes, _ = torch.sort(batch_nodes, dim=0)
-        batch_pairs = torch.combinations(batch_nodes, r=2).T.type(torch.int)
 
+
+        # self.__masked_pairs = torch.as_tensor([[0, 1], [0, 2], [1, 2]], dtype=torch.int, device=self.get_device()).T
         if self.__masked_pairs is not None:
-            dist = torch.cdist(
-                batch_pairs.T.unsqueeze(0).type(torch.float), self.__masked_pairs.T.unsqueeze(0).type(torch.float)
-            ).squeeze(0)
-            unmatched_indices = dist.nonzero()[:, 0]
-            batch_pairs = torch.index_select(batch_pairs, dim=1, index=unmatched_indices)
+
+            temp = torch.as_tensor([self.get_number_of_nodes(), 1], dtype=torch.int, device=self.get_device())
+            mask_idx = self.__masked_pairs.T @ temp
+            batch_pairs = torch.as_tensor([
+                [batch_nodes[i], batch_nodes[j]] for i in range(self.__batch_size) for j in range(i+1, self.__batch_size)
+                if (batch_nodes[i] * self.get_number_of_nodes() + batch_nodes[j]) not in mask_idx
+            ], dtype=torch.int, device=self.get_device()).T
+            # temp = torch.as_tensor([[self.get_number_of_nodes()], [1]], dtype=torch.int, device=self.get_device())
+            # batch_idx = batch_pairs.T @ temp
+            # mask_idx = self.__masked_pairs.T @ temp
+            # print((torch.abs(batch_idx - mask_idx.T) == 0).shape)
+            # idx = (batch_idx - mask_idx.T).nonzero()[:, 0]
+
+
+            # batch_pairs = torch.index_select(batch_pairs, dim=1, index=idx)
+            # dist = torch.cdist(
+            #     batch_pairs.T.unsqueeze(0).type(torch.float), self.__masked_pairs.T.unsqueeze(0).type(torch.float)
+            # ).squeeze(0)
+            # unmatched_indices = dist.nonzero()[:, 0]
+            # batch_pairs = torch.index_select(batch_pairs, dim=1, index=unmatched_indices)
+
+        else:
+            batch_pairs = torch.combinations(batch_nodes, r=2).T.type(torch.int)
 
         # Forward pass
         average_batch_loss, average_batch_nll = self.forward(
