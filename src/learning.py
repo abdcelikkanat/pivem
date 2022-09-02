@@ -273,7 +273,7 @@ class LearningModel(BaseModel, torch.nn.Module):
         if self.__masked_pairs is not None:
 
             temp = torch.as_tensor([self.get_number_of_nodes(), 1], dtype=torch.float, device=self.get_device())
-            mask_idx = (self.__masked_pairs.T @ temp).dtype(torch.int)
+            mask_idx = (self.__masked_pairs.dtype(torch.float).T @ temp).dtype(torch.int)
             batch_pairs = torch.as_tensor([
                 [batch_nodes[i], batch_nodes[j]] for i in range(self.__batch_size) for j in range(i+1, self.__batch_size)
                 if (batch_nodes[i] * self.get_number_of_nodes() + batch_nodes[j]) not in mask_idx
