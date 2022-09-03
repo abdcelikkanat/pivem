@@ -31,7 +31,7 @@ class Dataset:
             self.__nodes = data[2]
             self.__nodes_num = len(self.__nodes)
 
-            if len(data) >= 3:
+            if len(data) > 3:
                 self.__node2group = data[3]
 
             if self.__verbose:
