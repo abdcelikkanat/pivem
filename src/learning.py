@@ -328,7 +328,6 @@ class LearningModel(BaseModel, torch.nn.Module):
         # Weight the negative log likelihood if there are masked pairs
         if self.__masked_pairs is not None:
             c = (self.get_number_of_nodes() * (self.get_number_of_nodes() - 1) / 2 ) / (self.__masked_pairs.shape[1])
-            print(c, self.__masked_pairs.shape)
             nll = c * nll
         total = nll + prior
 
