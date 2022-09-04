@@ -268,8 +268,6 @@ class LearningModel(BaseModel, torch.nn.Module):
         )
         batch_nodes, _ = torch.sort(batch_nodes, dim=0)
 
-
-        # self.__masked_pairs = torch.as_tensor([[0, 1], [0, 2], [1, 2]], dtype=torch.int, device=self.get_device()).T
         if self.__masked_pairs is not None:
 
             temp = torch.as_tensor([self.get_number_of_nodes(), 1], dtype=torch.float, device=self.get_device())
@@ -278,19 +276,6 @@ class LearningModel(BaseModel, torch.nn.Module):
                 [batch_nodes[i], batch_nodes[j]] for i in range(self.__batch_size) for j in range(i+1, self.__batch_size)
                 if (batch_nodes[i] * self.get_number_of_nodes() + batch_nodes[j]) not in mask_idx
             ], dtype=torch.int, device=self.get_device()).T
-            # temp = torch.as_tensor([[self.get_number_of_nodes()], [1]], dtype=torch.int, device=self.get_device())
-            # batch_idx = batch_pairs.T @ temp
-            # mask_idx = self.__masked_pairs.T @ temp
-            # print((torch.abs(batch_idx - mask_idx.T) == 0).shape)
-            # idx = (batch_idx - mask_idx.T).nonzero()[:, 0]
-
-
-            # batch_pairs = torch.index_select(batch_pairs, dim=1, index=idx)
-            # dist = torch.cdist(
-            #     batch_pairs.T.unsqueeze(0).type(torch.float), self.__masked_pairs.T.unsqueeze(0).type(torch.float)
-            # ).squeeze(0)
-            # unmatched_indices = dist.nonzero()[:, 0]
-            # batch_pairs = torch.index_select(batch_pairs, dim=1, index=unmatched_indices)
 
         else:
             batch_pairs = torch.combinations(batch_nodes, r=2).T.type(torch.int)
@@ -327,18 +312,24 @@ class LearningModel(BaseModel, torch.nn.Module):
     def forward(self, nodes: torch.Tensor, pairs: torch.Tensor,
                 events_count: torch.Tensor, alpha1: torch.Tensor, alpha2: torch.Tensor, batch_num: int):
 
-        total = 0
+        total, nll = 0, 0
         if self.__approach == "nhpp":
             nll = self.get_negative_log_likelihood(pairs, events_count, alpha1, alpha2)
 
         elif self.__approach == "survival":
-            pass #nll += self.get_survival_log_likelihood(nodes, event_times, event_node_pairs)
+            pass  #nll += self.get_survival_log_likelihood(nodes, event_times, event_node_pairs)
 
         else:
             raise ValueError("Invalid approach name!")
 
         # Add prior
         prior = self.get_neg_log_prior(batch_nodes=nodes, batch_num=batch_num)
+
+        # Weight the negative log likelihood if there are masked pairs
+        if self.__masked_pairs is not None:
+            c = (self.get_number_of_nodes() * (self.get_number_of_nodes() - 1) / 2 ) / (self.__masked_pairs.shape[1])
+            print(c, self.__masked_pairs.shape)
+            nll = c * nll
         total = nll + prior
 
         return total, nll

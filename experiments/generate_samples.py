@@ -21,16 +21,13 @@ parser.add_argument(
     '--log_file', type=str, required=False, default="", help='Path for the log file'
 )
 parser.add_argument(
-    '--pr', type=float, required=False, default=0.05, help='Prediction ratio'
+    '--pr', type=float, required=False, default=0.1, help='Prediction ratio'
 )
 parser.add_argument(
-    '--mr', type=float, required=False, default=0.025, help='Masking ratio'
+    '--mr', type=float, required=False, default=0.2, help='Masking ratio'
 )
 parser.add_argument(
-    '--cr', type=float, required=False, default=0.025, help='Completion ratio'
-)
-parser.add_argument(
-    '--trials_num', type=int, required=False, default=10, help='Number of trials'
+    '--cr', type=float, required=False, default=0, help='Completion ratio'
 )
 parser.add_argument(
     '--verbose', type=bool, required=False, default=True, help='Verbose'
@@ -49,7 +46,6 @@ log_file = args.log_file
 prediction_ratio = args.pr
 masking_ratio = args.mr
 completion_ratio = args.cr
-trials_num = args.trials_num
 verbose = args.verbose
 seed = args.seed
 
@@ -245,7 +241,7 @@ if verbose:
 
 # Save the training pair and events
 os.makedirs(os.path.join(output_folder, "train"))
-with open(os.path.join(output_folder, "train" "pairs.pkl"), 'wb') as f:
+with open(os.path.join(output_folder, "train", "pairs.pkl"), 'wb') as f:
     pickle.dump(train_pairs, f)
 with open(os.path.join(output_folder, "train", "events.pkl"), 'wb') as f:
     pickle.dump(train_events, f)
@@ -255,17 +251,17 @@ if node2group is not None:
 
 # Save the residual pair and events
 os.makedirs(os.path.join(output_folder, "residual"))
-with open(os.path.join(output_folder, "residual" "pairs.pkl"), 'wb') as f:
-    pickle.dump(train_pairs, f)
+with open(os.path.join(output_folder, "residual", "pairs.pkl"), 'wb') as f:
+    pickle.dump(residual_pairs, f)
 with open(os.path.join(output_folder, "residual", "events.pkl"), 'wb') as f:
-    pickle.dump(train_events, f)
+    pickle.dump(residual_events, f)
 
 # Save the training pair and events
 os.makedirs(os.path.join(output_folder, "completion"))
-with open(os.path.join(output_folder, "completion" "pairs.pkl"), 'wb') as f:
-    pickle.dump(train_pairs, f)
+with open(os.path.join(output_folder, "completion", "pairs.pkl"), 'wb') as f:
+    pickle.dump(completion_pairs, f)
 with open(os.path.join(output_folder, "completion", "events.pkl"), 'wb') as f:
-    pickle.dump(train_events, f)
+    pickle.dump(completion_events, f)
 
 # Save the mask pairs
 os.makedirs(os.path.join(output_folder, "mask"))
