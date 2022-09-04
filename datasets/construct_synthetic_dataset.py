@@ -7,13 +7,12 @@ from src.construction import ConstructionModel, InitialPositionVelocitySampler
 from src.animation import Animation
 from src.dataset import Dataset
 
-import math
 
 ########################################################################################################################
 # Definition of the model parameters
 dim = 2
 beta = 0  #0.025
-cluster_num = 8 #20
+cluster_num = 20 #20
 cluster_size = 5
 nodes_num = cluster_num * cluster_size
 bins_num = 100
@@ -68,7 +67,7 @@ node2group_data = {
     "group2node": {node // cluster_size: node for node in range(nodes_num)}
 }
 with open(node2group_path, "wb") as f:
-    pkl.dump(node2group_data, f)
+    pkl.dump(node2group_data["node2group"], f)
 
 ########################################################################################################################
 
@@ -90,8 +89,6 @@ dataset = Dataset(path=dataset_folder, seed=seed)
 pairs, events = dataset.get_pairs(), dataset.get_events()
 
 # Read the group information
-with open(node2group_path, "rb") as f:
-    node2group_data = pkl.load(f)
 node2group, group2node = node2group_data["node2group"], node2group_data["group2node"]
 # Animate
 node2color = [node2group[idx] for idx in range(nodes_num)]
@@ -106,5 +103,17 @@ with open(os.path.join(dataset_folder, "info.txt"), 'w') as f:
     f.write(f"Number of total events: {dataset.number_of_event_pairs()}\n")
     f.write(f"Minimum event time: {dataset.get_min_event_time()}\n")
     f.write(f"Maximum event time: {dataset.get_max_event_time()}\n")
+    f.write(f"Dim: {dim}\n")
+    f.write(f"Beta: {beta}\n")
+    f.write(f"Cluster num: {cluster_num}\n")
+    f.write(f"Cluster size: {cluster_size}\n")
+    f.write(f"Nodes num: {nodes_num}\n")
+    f.write(f"Bins num: {bins_num}\n")
+    f.write(f"Prior lambda: {prior_lambda}\n")
+    f.write(f"Prior sigma: {prior_sigma}\n")
+    f.write(f"Prior-B-x0-c: {prior_B_x0_c}\n")
+    f.write(f"Prior-B-ls: {prior_B_ls}\n")
+    f.write(f"Seed: {seed}\n")
 
 ########################################################################################################################
+
