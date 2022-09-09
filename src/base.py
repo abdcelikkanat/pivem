@@ -169,7 +169,7 @@ class BaseModel(torch.nn.Module):
         xt = x0 + torch.index_select(
             cum_displacement, dim=0, index=events_bin_indices * v.shape[1] + torch.arange(len(events_bin_indices))
         )
-        # Finally, add the the displacement on the interval that nodes lay on
+        # Finally, add the displacement on the interval that nodes lay on
         xt = xt + torch.mul(
             residual_time.unsqueeze(1),
             torch.index_select(
@@ -549,3 +549,6 @@ class BaseModel(torch.nn.Module):
         return -log_prior_likelihood.squeeze(0)
 
 
+    def average_velocity(self):
+
+        return torch.mean(self.__v, dim=0)
