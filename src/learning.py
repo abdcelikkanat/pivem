@@ -46,8 +46,13 @@ class LearningModel(BaseModel, torch.nn.Module):
         self.__epoch_num = epoch_num
         self.__batch_size = nodes_num if batch_size is None else batch_size
         self.__steps_per_epoch = steps_per_epoch
-        self.__learning_param_names = [["x0", "beta", ], ["v"], ["reg_params"]]  # Order matters for sequential learning
-        self.__learning_param_epoch_weights = [1, 1, 1]
+        # Order matters for sequential learning
+        self.__learning_param_names = [["x0", "beta", ], ["v"]]
+        self.__learning_param_epoch_weights = [1, 1]
+        if prior_lambda != 0:
+            self.__learning_param_names.append(["reg_params"])
+            self.__learning_param_epoch_weights.append(1)
+
         self.__optimizer = None
 
         # Node pairs which will be discarded during the optimization
@@ -323,7 +328,10 @@ class LearningModel(BaseModel, torch.nn.Module):
             raise ValueError("Invalid approach name!")
 
         # Add prior
-        prior = self.get_neg_log_prior(batch_nodes=nodes, batch_num=batch_num)
+        if self.get_prior_lambda() == 0:
+            prior = 0
+        else:
+            prior = self.get_neg_log_prior(batch_nodes=nodes, batch_num=batch_num)
 
         # Weight the negative log likelihood if there are masked pairs
         if self.__masked_pairs is not None:
