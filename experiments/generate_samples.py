@@ -158,7 +158,7 @@ if data_node2group is None:
 else:
     node2group = {node if newlabel is None else newlabel[node]: data_node2group[node] for node in train_graph.nodes()}
 
-newlabel = {node: idx for idx, node in enumerate(train_graph.nodes())}
+# newlabel = {node: idx for idx, node in enumerate(train_graph.nodes())}
 train_dataset = Dataset(
     data=(train_events, train_pairs, list(range(nodes_num)), node2group),
     normalize=False, seed=seed, verbose=False
