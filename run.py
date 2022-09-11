@@ -128,6 +128,11 @@ def process(args):
     else:
 
         kwargs, lm_state = torch.load(init_path, map_location=torch.device(device))
+        kwargs["data"], kwargs["nodes_num"], kwargs["bins_num"], kwargs["dim"] = data, nodes_num, bins_num, dim
+        kwargs["last_time"], kwargs["prior_k"], kwargs["prior_lambda"] = last_time, K, prior_lambda
+        kwargs["masked_pairs"], kwargs["learning_rate"], kwargs["batch_size"] = masked_pairs, learning_rate, batch_size
+        kwargs["epoch_num"], kwargs["steps_per_epoch"] = epoch_num, steps_per_epoch
+        kwargs["device"], kwargs["verbose"], kwargs["seed"] = torch.device(device), verbose, seed
         lm = LearningModel(**kwargs)
         lm.load_state_dict(lm_state)
 
