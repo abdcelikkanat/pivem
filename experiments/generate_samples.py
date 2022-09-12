@@ -113,9 +113,9 @@ if verbose:
 # If there are any nodes which do not have any events during the training timeline,
 # the graph must be relabeled and these nodes must be removed from the testing set as well.
 newlabel = None
-if train_graph.number_of_nodes() != nodes_num:
+if len(list(nx.isolates(train_graph))) != 0:
 
-    isolated_nodes = set(range(nodes_num)).difference(train_graph.nodes())
+    isolated_nodes = list(nx.isolates(train_graph))
     if verbose:
         print(f"\t\t+ Training graph has {len(isolated_nodes)} isolated nodes.")
 
@@ -129,6 +129,9 @@ if train_graph.number_of_nodes() != nodes_num:
         else:
             n += 1
 
+    # Remove the isolated nodes from the networkx graph
+    train_graph.remove_nodes_from(isolated_nodes)
+
     if verbose:
         print(f"\t\t+ {count} pairs have been removed from the prediction set.")
         print(f"\t\t+ The prediction set has currently {len(np.unique(np.asarray(pred_pairs)))} nodes.")
@@ -140,13 +143,17 @@ if train_graph.number_of_nodes() != nodes_num:
     if verbose:
         print(f"\t+ Nodes are being relabeled.")
 
-    # Relabel nodes
+    # Relabel nodes in the training set
     newlabel = {node: idx for idx, node in enumerate(train_graph.nodes())}
     for n, pair in enumerate(train_pairs):
         train_pairs[n] = [newlabel[pair[0]], newlabel[pair[1]]]
 
+    # Relabel nodes in the prediction set
     for n, pair in enumerate(pred_pairs):
         pred_pairs[n] = [newlabel[pair[0]], newlabel[pair[1]]]
+
+    # Relabel nodes in the networkx object
+    train_graph = nx.relabel_nodes(G=train_graph, mapping=newlabel)
 
     if verbose:
         print(f"\t\t+ Completed.")
@@ -176,19 +183,22 @@ completion_size = int(all_possible_pair_num * completion_ratio)
 total_sample_size = mask_size + completion_size
 
 # Construct pair indices
-all_pair_indices = list(range(all_possible_pair_num))
-np.random.shuffle(all_pair_indices)
+all_pos_pairs = [(i,j) for i in range(nodes_num) for j in range(i+1, nodes_num)] # all_pair_indices = list(range(all_possible_pair_num))
+np.random.shuffle(all_pos_pairs)
+# np.random.shuffle(all_pair_indices)
 
-# Sample node pairs such that each node has at least one event
+# Sample node pairs such that each node in the residual has at least one event
 sampled_pairs = []
-for k, pair_idx in enumerate(all_pair_indices):
-    i, j = linearIdx2matIdx(idx=pair_idx, n=nodes_num, k=2)
+for k, pair in enumerate(all_pos_pairs):
+    i, j = pair #linearIdx2matIdx(idx=pair_idx, n=nodes_num, k=2)
 
     if train_graph.has_edge(i, j):
         train_graph.remove_edge(i, j)
 
-    if train_graph.number_of_nodes() != nodes_num:
-        train_graph.add_edge(i, j)
+        if len(list(nx.isolates(train_graph))) != 0:
+            train_graph.add_edge(i, j)
+        else:
+            sampled_pairs.append([i, j])
     else:
         sampled_pairs.append([i, j])
 
@@ -211,6 +221,7 @@ completion_events = [train_dataset[pair][1] for pair in completion_pairs]
 # Construct the residual pairs and events
 # Since we always checked in the previous process, every node has at least one event
 residual_pairs, residual_events = train_pairs.copy(), train_events.copy()
+
 if completion_size:
     completion_pair_indices = [pairIdx2flatIdx(pair[0], pair[1], nodes_num) for pair in completion_pairs]
 
@@ -223,6 +234,7 @@ if completion_size:
         else:
             n += 1
 
+print(len(np.unique(residual_pairs)))
 if verbose:
     print(f"\t+ Masking set has {mask_size} pairs.")
     mask_samples_event_pairs_num = sum([1 if len(pair_events) else 0 for pair_events in mask_events])
