@@ -18,22 +18,22 @@ import pickle as pkl
 dim = 2
 K = 25
 bins_num = 100
-prior_lambda = "1e0"
+prior_lambda = "1e2"
 batch_size = 100
 learning_rate = 0.1
 epoch_num = 100
 steps_per_epoch = 10
-seed = 12
+seed = 32
 last_time = 0.9
 
 ###
-dataset_name = f"nodes=100_cn=20_bins=10_intensity=5_seed=19"
-model_name = f"dec_{dataset_name}_B={bins_num}_K={K}_lambda={prior_lambda}_dim={dim}_lt={last_time}"
+dataset_name = "beta=0_synthetic" #f"nodes=100_cn=20_bins=10_intensity=5_seed=19"
+model_name = f"son_dec_{dataset_name}_B={bins_num}_K={K}_lambda={prior_lambda}_dim={dim}_lt={last_time}"
 model_name += f"_epoch={epoch_num}_spe={steps_per_epoch}_bs={batch_size}_lr={learning_rate}_seed={seed}"
 
 node2group_path = os.path.join(utils.BASE_FOLDER, "experiments", "datasets", dataset_name, "node2group.pkl")
-model_path = os.path.join(utils.BASE_FOLDER, "experiments", "models_mr=0.2_cr=0.0_pr=0.1", model_name+".model")
-anim_path = os.path.join(utils.BASE_FOLDER, "experiments", "animations", f"{model_name}.mp4")
+model_path = os.path.join(utils.BASE_FOLDER, "experiments", "models_mr=0.2_cr=0.1_pr=0.1", model_name+".model")
+anim_path = os.path.join(utils.BASE_FOLDER, "experiments", "animations", f"{model_name}.gif")
 
 # Read the node2group information
 if os.path.exists(node2group_path):
@@ -49,7 +49,7 @@ kwargs["device"] = "cpu"
 lm = LearningModel(**kwargs)
 lm.load_state_dict(lm_state)
 
-frame_times = torch.linspace(0, lm.get_last_time(), 100)
+frame_times = torch.linspace(0, lm.get_last_time(), int(100*lm.get_last_time()))
 embs = lm.get_xt(
     events_times_list=torch.cat([frame_times]*lm.get_number_of_nodes()),
     x0=torch.repeat_interleave(lm.get_x0(), repeats=len(frame_times), dim=0),
@@ -61,4 +61,4 @@ anim = Animation(
     node2color=None if node2group is None else [node2group[idx] for idx in range(lm.get_number_of_nodes())],
     frame_times=frame_times.numpy()
 )
-anim.save(anim_path)
+anim.save(anim_path, format="gif")

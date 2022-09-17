@@ -46,12 +46,6 @@ class Animation:
 
     def _render(self, fig, repeat=False):
         global sc, ax
-        # scatter = ax.axes(xlim=(0, 2), ylim=(-2, 2))
-
-        #line, = ax.plot([], [], lw=2)
-        # ax.grid()
-        # z = np.random.rand(100, 2)
-        # sc = ax.scatter(z[:, 0]-20, z[:, 1]+2, c='r')
 
         def __set_canvas():
 
@@ -108,10 +102,13 @@ class Animation:
     def save(self, filepath, format="mp4"):
         global sc, ax
 
-        fig, ax = plt.subplots(figsize=self._figsize)
-
+        fig, ax = plt.subplots(figsize=self._figsize, frameon=True)
+        ax.set_axis_off()
+        x_min, y_min = self._embs.min(axis=0).min(axis=0)
+        x_max, y_max = self._embs.max(axis=0).max(axis=0)
         self._anim = self._render(fig)
 
+        # fig.set_size_inches(y_max-y_min, x_max-x_min, )
         if format == "mp4":
             writer = animation.FFMpegWriter(fps=self._fps)
 
