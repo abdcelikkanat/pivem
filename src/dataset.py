@@ -1,222 +1,227 @@
-import os
-import random
+import re
 import torch
-import numpy as np
-import pickle as pkl
-import matplotlib.pyplot as plt
-from utils.common import pairIdx2flatIdx, set_seed
 
 
 class Dataset:
+    """
+    A class to read a temporal network dataset
+    Version 2.0
+    """
 
-    def __init__(self, path: str = None, data: tuple = None, normalize: bool = True,
-                 verbose: bool = True, seed: int = 19):
+    def __init__(self, nodes_num=0, edges: torch.LongTensor = None, edge_times: torch.Tensor = None,
+                 edge_weights: torch.Tensor = None, directed: bool = None, signed: bool = None, verbose=False):
 
-        self.__events = None
-        self.__pairs = None
-        self.__node2group = None
-        self.__nodes_num = 0
-        self.__nodes = []
+        self.__nodes_num = nodes_num
+        self.__edges = edges
+        self.__times = edge_times
+        self.__weights = edge_weights
+        self.__directed = directed
+        self.__signed = signed
         self.__verbose = verbose
 
-        assert path is None or data is None, "Path and data parameter cannot be set at the same time!"
+        # If the edge times are given, set the initial and last time
+        if self.__times is not None:
+            self.__init_time = self.__times.min()
+            self.__last_time = self.__times.max()
 
-        if path is not None:
-            self.read(path, normalize=normalize)
+        # Check if the given parameters are valid
+        if self.__edges is not None:
+            assert self.__edges.shape[0] == 2, \
+                "The edges must be a matrix of shape (2xT)!"
+            assert self.__edges.shape[1] == self.__times.shape[0], \
+                f"The number of edges ({self.__edges.shape[1]}) and the length of edge times ({self.__times.shape[0]}) must match!"
 
-        if data is not None:
-            self.__events = data[0]
-            self.__pairs = data[1]
+    def read_edge_list(self, file_path, self_loops: bool = False):
+        """
+        Read the edge list file
+        :param file_path: path of the file
+        :param self_loops: whether to allow self loops or not
+        """
 
-            self.__nodes = data[2]
-            self.__nodes_num = len(self.__nodes)
+        edges, edge_times, edge_weights = [], [], []
+        self.__directed, self.__signed = False, False
+        with open(file_path, 'r') as f:
+            for line in f.readlines():
 
-            if len(data) > 3:
-                self.__node2group = data[3]
+                # Discard the lines starting with #
+                if line[0] == '#':
+                    continue
 
-            if self.__verbose:
-                self.print_statistics()
+                # Split the line into a list of strings
+                tokens = re.split(';|,| |\t|\n', line.strip())
 
-            if normalize:
-                self.__normalize_events()
+                if len(tokens) < 3:
+                    raise Exception("An edge must consist of at least 3 columns: source, target and time!")
 
-        # Set the seed value
-        set_seed(seed=seed)
+                # Add the edge
+                edges.append((int(tokens[0]), int(tokens[1])))
 
-    def read(self, path, normalize=True):
+                # Add the edge time
+                edge_times.append(int(tokens[2]))
 
-        with open(os.path.join(path, 'events.pkl'), 'rb') as f:
-            self.__events = list(pkl.load(f))
+                # Add the edge weight if given
+                if len(tokens) > 3:
+                    edge_weights.append(float(tokens[3]))
 
-        with open(os.path.join(path, 'pairs.pkl'), 'rb') as f:
-            self.__pairs = np.asarray(pkl.load(f), dtype=int).tolist()
+                # If the first node of the edge is greater than the second, the graph is directed
+                if edges[-1][0] > edges[-1][1]:
+                    self.__directed = True
 
-        self.__nodes = np.unique(self.__pairs).tolist()
-        self.__nodes_num = len(self.__nodes)
+                # Check if the edge is a self loop
+                if edges[-1][0] == edges[-1][1] and not self_loops:
+                    raise ValueError("Self loops are not allowed!")
+
+                # Check if the edge is signed
+                if len(tokens) > 3 and edge_weights[-1] < 0:
+                    self.__signed = True
+
+        # Convert to torch format
+        self.__edges = torch.as_tensor(edges, dtype=torch.long).T
+        self.__times = torch.as_tensor(edge_times, dtype=torch.long)  # Unix timestamp
+        self.__weights = torch.as_tensor(edge_weights, dtype=torch.float)
+
+        # Get the nodes
+        nodes = torch.unique(self.__edges)
+        self.__nodes_num = len(nodes)
+
+        # Check the minimum and maximum node labels
+        assert min(nodes) == 0,\
+            f"The nodes must start from 0, min node: {min(nodes)}."
+        assert max(nodes) + 1 == len(nodes), \
+            f"The max node label is {max(nodes)} but there are {len(nodes)} nodes so some nodes do not have any link."
+
+        # Sort the edges
+        sorted_indices = self.__times.argsort()
+        self.__edges = self.__edges[:, sorted_indices]
+        self.__times = self.__times[sorted_indices]
+        self.__weights = self.__weights[sorted_indices] if len(edge_weights) else None
+
+        # If the minimum and maximum time are not given, set them
+        self.__init_time = self.__times.min()
+        self.__last_time = self.__times.max()
 
         if self.__verbose:
-            self.print_statistics()
+            self.print_info()
 
-        if normalize:
-            self.__normalize_events()
+    def has_isolated_nodes(self):
+        """
+        Check if the graph has isolated nodes
+        """
 
-        # Read the file storing the groups of nodes if exists
-        node2group_file_path = os.path.join(path, 'node2group.pkl')
-        if os.path.exists(node2group_file_path):
-            with open(node2group_file_path, 'rb') as f:
-                self.__node2group = pkl.load(f)
+        # Get the isolated nodes in the first split
+        non_isolated_nodes = torch.sort(torch.unique(self.__edges))[0]
 
-    def __normalize_events(self):
+        return self.__nodes_num - len(non_isolated_nodes)
 
-        min_time = self.get_min_event_time()
-        max_time = self.get_max_event_time()
+    def is_directed(self):
+        """
+        Check if the graph is directed
+        """
 
-        if min_time != 0.0 or max_time != 1.0:
+        return self.__directed
 
-            if self.__verbose:
-                print(f"- The event times are being normalized...")
-                print(f"\t+ The minimum time: {min_time}")
-                print(f"\t+ The maximum time: {max_time}")
+    def is_signed(self):
+        """
+        Check if the graph is signed
+        """
 
-            for i in range(self.number_of_event_pairs()):
-                for j in range(len(self.__events[i])):
-                    self.__events[i][j] = (self.__events[i][j] - min_time ) / float(max_time - min_time)
+        return self.__signed
 
-    def write(self, folder_path):
-
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-
-        with open(os.path.join(folder_path, 'events.pkl'), 'wb') as f:
-            pkl.dump(self.__events, f)
-
-        with open(os.path.join(folder_path, 'pairs.pkl'), 'wb') as f:
-            pkl.dump(self.__pairs, f)
-
-    def __getitem__(self, item):
-
-        if type(item) is int:
-
-            return self.__pairs[item], self.__events[item]
-
-        elif type(item) is tuple or type(item) is list:
-
-            try:
-                idx = self.__pairs.index(list(item))
-                return self.__pairs[idx], self.__events[idx]
-
-            except ValueError:
-                return item, []
-
-        else:
-
-            raise ValueError("Invalid input type!")
-
-    def number_of_nodes(self):
-
+    def get_nodes_num(self) -> int:
+        """
+        Get the number of nodes
+        """
         return self.__nodes_num
 
-    def number_of_event_pairs(self):
+    def get_init_time(self) -> float:
+        """
+        Get the iniitial time
+        """
+        return self.__init_time
 
-        return len(self.__events)
+    def set_init_time(self, init_time: float):
+        """
+        Set the initial time
+        """
+        self.__init_time = init_time
 
-    def number_of_total_events(self):
+    def get_last_time(self) -> float:
+        """
+        Get the last time
+        """
+        return self.__last_time
 
-        return sum(len(events) for events in self.__events)
+    def set_last_time(self, last_time: float):
+        """
+        Set the last time
+        """
+        self.__last_time = last_time
 
-    def get_min_event_time(self):
+    def get_edges(self, idx: int = None) -> torch.Tensor:
+        """
+        Get the edges
+        """
+        if idx is None:
+            return self.__edges
+        else:
+            return self.__edges[idx]
 
-        return min([min(pair_events) for pair_events in self.__events])
+    def get_times(self) -> torch.Tensor:
+        """
+        Get the edge times
+        """
 
-    def get_max_event_time(self):
+        return self.__times
 
-        return max([max(pair_events) for pair_events in self.__events])
+    def get_weights(self) -> torch.Tensor:
+        """
+        Get the states
+        """
 
-    def get_nodes(self):
+        if self.__weights is None:
+            return torch.ones(self.__edges.shape[1], dtype=torch.float)
+        else:
+            return self.__weights
 
-        return self.__nodes
+    def get_data(self, weights=False):
+        """"
+        Get all data
+        :param weights: if True, return the weights
+        :return: edges, times, states (if states=True)
+        """
 
-    def get_events(self):
+        if weights:
+            return self.get_edges(), self.get_times(), self.get_weights()
+        else:
+            return self.get_edges(), self.get_times()
 
-        return self.__events
+    def get_data_dict(self, weights: bool = False):
+        """
+        Get the data in a dictionary format
+        :param weights: if True, return the weights
+        :return: a dictionary with keys the source nodes and values a dictionary with keys the target nodes and values
+        """
+        data_dict = {}
+        for i, j, t, w in zip(self.get_edges(0), self.get_edges(1), self.get_times(), self.get_weights()):
 
-    def get_pairs(self):
+            if i.item() in data_dict:
+                if j.item() in data_dict[i.item()]:
+                    data_dict[i.item()][j.item()].append((t, w) if weights else t)
+                else:
+                    data_dict[i.item()][j.item()] = [(t, w) if weights else t]
+            else:
+                data_dict[i.item()] = {j.item(): [(t, w) if weights else t]}
 
-        return self.__pairs
+        return data_dict
 
-    def get_groups(self):
-
-        return self.__node2group
-
-    def print_statistics(self):
-
-        print(f"- The dataset statistics:")
-        print(f"\t+ The number of nodes: {self.number_of_nodes()}")
-        print(f"\t+ The total number of edges: {self.number_of_total_events()}")
-        print(f"\t+ The number of pairs having events: {self.number_of_event_pairs()}")
-        print(f"\t+ Average number of events: {self.number_of_total_events() / self.number_of_event_pairs()}")
-        print(f"\t+ The initial time of the dataset: {self.get_min_event_time()}")
-        print(f"\t+ The last time of the dataset: {self.get_max_event_time()}")
-
-    def plot_events(self, nodes: list = None, fig_size: tuple = None, show = True):
-
-        if nodes is None:
-            nodes = [0, 1]
-
-        nodes_num = len(nodes)
-        nodes = sorted(nodes)
-
-        pair_indices = [[i, j] for i in range(nodes_num) for j in range(i + 1, nodes_num)]
-        pairs = [[nodes[i], nodes[j]] for i, j in pair_indices]
-
-        plt.figure(figsize=fig_size if fig_size is not None else (12, 10))
-
-        for pairIdx, pair in enumerate(pairs):
-            _, events = self.__getitem__(pair)
-            y = len(events) * [pairIdx]
-            plt.plot(events, y, 'k.')
-
-        plt.yticks(np.arange(len(pairs)), [f"({pair[0]},{pair[1]})" for pair in pairs])
-
-        plt.xlabel("Timeline")
-        plt.ylabel("Node pairs")
-
-        if show:
-            plt.show()
-
-        return plt
-
-    def plot_samples(self, labels, samples, fig_size: tuple = None):
-
-        # Plot the events
-        plt = self.plot_events(nodes=list(range(self.number_of_nodes())), fig_size= fig_size, show=False)
-
-        # Check if the samples contain event times
-        assert len(samples[0]) == 3, "Samples do not contain event times!"
-
-        c = ['r.', 'b.']
-        for label, sample in zip(labels, samples):
-
-            plt.plot(sample[2], pairIdx2flatIdx(i=sample[0], j=sample[1], n=self.number_of_nodes()), c[label])
-
-        plt.show()
-
-    def get_freq(self):
-
-        F = np.zeros(shape=(self.__nodes_num, self.__nodes_num), dtype=np.int)
-
-        for i, j in zip(*np.triu_indices(self.__nodes_num, k=1)):
-            F[i, j] = len(self[[i, j]][1])
-
-        return F
-
-    def info(self):
-
-        print("- Dataset Information -")
-        print(f"\tNumber of nodes: {self.number_of_nodes()}")
-        print(f"\tNumber of events: {self.number_of_total_events()}")
-        p = round(100 * self.number_of_event_pairs()/(0.5 * self.number_of_nodes() * (self.number_of_nodes() - 1)), 2)
-        print(f"\tNumber of pairs having at least one event: {self.number_of_event_pairs()} ({p}%)")
-        print(f"\tAverage number of events per pair: {self.number_of_total_events() / float(len(self.__pairs))}")
-        print(f"\tMin. time: {self.get_min_event_time()}")
-        print(f"\tMax. time: {self.get_max_event_time()}")
+    def print_info(self):
+        """
+        Print the dataset info
+        """
+        print(f"+ Dataset information")
+        print(f"\t- Number of nodes: {self.__nodes_num}")
+        print(f"\t- Number of edges: {self.__edges.shape[1]}")
+        print(f"\t- Is directed: {self.__directed}")
+        print(f"\t- Is signed: {self.__signed}")
+        print(f"\t- Initial time: {self.__init_time}")
+        print(f"\t- Last time: {self.__last_time}")

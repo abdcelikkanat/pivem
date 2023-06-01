@@ -5,21 +5,13 @@ from src.learning import LearningModel
 from src.dataset import Dataset
 from utils.common import set_seed
 
-# Global control for device
-CUDA = True
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-if (CUDA) and (device == "cuda:0"):
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-else:
-    torch.set_default_tensor_type('torch.FloatTensor')
-
 
 def parse_arguments():
     parser = ArgumentParser(description="Examples: \n",
                             formatter_class=RawTextHelpFormatter)
 
     parser.add_argument(
-        '--dataset', type=str, required=True, help='Path of the dataset'
+        '--edges', type=str, required=True, help='Path of the edge file'
     )
     parser.add_argument(
         '--model_path', type=str, required=True, help='Path of the model'
@@ -40,9 +32,6 @@ def parse_arguments():
         '--dim', type=int, default=2, required=False, help='Dimension size'
     )
     parser.add_argument(
-        '--last_time', type=float, default=1.0, required=False, help='The last time point of the training dataset'
-    )
-    parser.add_argument(
         '--k', type=int, default=10, required=False, help='Latent dimension size of the prior element'
     )
     parser.add_argument(
@@ -61,6 +50,9 @@ def parse_arguments():
         '--lr', type=float, default=0.1, required=False, help='Learning rate'
     )
     parser.add_argument(
+        '--device', type=str, default="cuda", required=False, help='Device'
+    )
+    parser.add_argument(
         '--seed', type=int, default=19, required=False, help='Seed value to control the randomization'
     )
     parser.add_argument(
@@ -72,7 +64,7 @@ def parse_arguments():
 
 def process(args):
 
-    dataset_path = args.dataset
+    edge_file_path = args.edges
     model_path = args.model_path
     init_path = args.init_path
     mask_path = args.mask_path
@@ -80,7 +72,6 @@ def process(args):
 
     bins_num = args.bins_num
     dim = args.dim
-    last_time = args.last_time
     K = args.k
     prior_lambda = args.prior_lambda
     epoch_num = args.epoch_num
@@ -88,6 +79,7 @@ def process(args):
     batch_size = args.batch_size
     learning_rate = args.lr
 
+    device = args.device
     seed = args.seed
     verbose = args.verbose
 
@@ -95,16 +87,13 @@ def process(args):
     set_seed(seed=seed)
 
     # Load the dataset
-    dataset = Dataset(path=dataset_path, normalize=False, verbose=verbose, seed=seed)
+    dataset = Dataset()
+    dataset.read_edge_list(edge_file_path)
     if batch_size <= 0:
-        batch_size = dataset.number_of_nodes()
+        batch_size = dataset.get_nodes_num()
 
     # Get the number of nodes
-    nodes_num = dataset.number_of_nodes()
-    data = dataset.get_pairs(), dataset.get_events()
-
-    assert dataset.get_min_event_time() >= 0 and dataset.get_max_event_time() <= 1.0, \
-        "The dataset contains events smaller than 0 or greater than 1.0!"
+    nodes_num = dataset.get_nodes_num()
 
     # Load the node pairs for masking if given
     masked_pairs = None
@@ -119,7 +108,7 @@ def process(args):
     if init_path == "":
 
         lm = LearningModel(
-            data=data, nodes_num=nodes_num, bins_num=bins_num, dim=dim, last_time=last_time,
+            nodes_num=nodes_num, bins_num=bins_num, dim=dim,
             prior_k=K, prior_lambda=prior_lambda, masked_pairs=masked_pairs,
             learning_rate=learning_rate, batch_size=batch_size, epoch_num=epoch_num, steps_per_epoch=steps_per_epoch,
             device=torch.device(device), verbose=verbose, seed=seed
@@ -128,16 +117,17 @@ def process(args):
     else:
 
         kwargs, lm_state = torch.load(init_path, map_location=torch.device(device))
-        kwargs["data"], kwargs["nodes_num"], kwargs["bins_num"], kwargs["dim"] = data, nodes_num, bins_num, dim
-        kwargs["last_time"], kwargs["prior_k"], kwargs["prior_lambda"] = last_time, K, prior_lambda
+        kwargs["nodes_num"], kwargs["bins_num"], kwargs["dim"] = nodes_num, bins_num, dim
+        kwargs["prior_k"], kwargs["prior_lambda"] = K, prior_lambda
         kwargs["masked_pairs"], kwargs["learning_rate"], kwargs["batch_size"] = masked_pairs, learning_rate, batch_size
         kwargs["epoch_num"], kwargs["steps_per_epoch"] = epoch_num, steps_per_epoch
         kwargs["device"], kwargs["verbose"], kwargs["seed"] = torch.device(device), verbose, seed
+
         lm = LearningModel(**kwargs)
         lm.load_state_dict(lm_state)
 
     # Learn the embeddings
-    lm.learn(loss_file_path=log_file_path)
+    lm.learn(dataset=dataset, loss_file_path=log_file_path)
 
     # Save the model
     lm.save(model_path)

@@ -9,7 +9,7 @@ class BaseModel(torch.nn.Module):
     Description
     '''
     def __init__(self, x0: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, bins_num: int = 100,
-                 last_time: float = 1.0, prior_lambda: float = 1e5, prior_sigma: torch.Tensor = None,
+                 prior_lambda: float = 1e5, prior_sigma: torch.Tensor = None,
                  prior_B_x0_c: torch.Tensor = None, prior_B_ls: torch.Tensor = None, prior_C_Q: torch.Tensor= None,
                  device: torch.device = "cpu", verbose: bool = False, seed: int = 0, **kwargs):
 
@@ -20,7 +20,7 @@ class BaseModel(torch.nn.Module):
         self.__beta = beta
         self.__seed = seed
         self.__init_time = 0  # It is always assumed that the initial time is 0
-        self.__last_time = last_time
+        self.__last_time = 1.
         self.__bins_num = bins_num
         self.__verbose = verbose
         self.__device = device
