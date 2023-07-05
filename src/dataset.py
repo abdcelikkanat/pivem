@@ -1,14 +1,15 @@
 import re
 import torch
+import utils
 
 
 class Dataset:
     """
     A class to read a temporal network dataset
-    Version 2.0
+    Version 2.1
     """
 
-    def __init__(self, nodes_num=0, edges: torch.LongTensor = None, edge_times: torch.Tensor = None,
+    def __init__(self, nodes_num=0, edges: torch.Tensor = None, edge_times: torch.Tensor = None,
                  edge_weights: torch.Tensor = None, directed: bool = None, signed: bool = None, verbose=False):
 
         self.__nodes_num = nodes_num
@@ -29,9 +30,9 @@ class Dataset:
             assert self.__edges.shape[0] == 2, \
                 "The edges must be a matrix of shape (2xT)!"
             assert self.__edges.shape[1] == self.__times.shape[0], \
-                f"The number of edges ({self.__edges.shape[1]}) and the length of edge times ({self.__times.shape[0]}) must match!"
+                f"The number of edges ({self.__edges.shape[1]}) must match with ({self.__times.shape[0]})!"
 
-    def read_edge_list(self, file_path, self_loops: bool = False):
+    def read_edge_list(self, file_path, self_loops: bool = False, check_conditions: bool = True):
         """
         Read the edge list file
         :param file_path: path of the file
@@ -85,10 +86,11 @@ class Dataset:
         self.__nodes_num = len(nodes)
 
         # Check the minimum and maximum node labels
-        assert min(nodes) == 0,\
-            f"The nodes must start from 0, min node: {min(nodes)}."
-        assert max(nodes) + 1 == len(nodes), \
-            f"The max node label is {max(nodes)} but there are {len(nodes)} nodes so some nodes do not have any link."
+        if check_conditions:
+            assert min(nodes) == 0,\
+                f"The nodes must start from 0, min node: {min(nodes)}."
+            assert max(nodes) + 1 == len(nodes), \
+                f"The max node is {max(nodes)} but there are {len(nodes)} nodes so some nodes do not have any link."
 
         # Sort the edges
         sorted_indices = self.__times.argsort()
@@ -204,23 +206,50 @@ class Dataset:
         data_dict = {}
         for i, j, t, w in zip(self.get_edges(0), self.get_edges(1), self.get_times(), self.get_weights()):
 
+            # If the source node has been added to the dictionary before.
             if i.item() in data_dict:
+                # If the target node has been added to the dictionary before.
                 if j.item() in data_dict[i.item()]:
                     data_dict[i.item()][j.item()].append((t, w) if weights else t)
+                # If the target node has not been added to the dictionary before.
                 else:
                     data_dict[i.item()][j.item()] = [(t, w) if weights else t]
+            # if the source node has not been added to the dictionary before.
             else:
                 data_dict[i.item()] = {j.item(): [(t, w) if weights else t]}
 
         return data_dict
 
+    def write_edges(self, file_path, weights: bool = False):
+        """
+        Write the edges to a file
+        """
+        with open(file_path, 'w') as f:
+            for i, j, t, w in zip(self.get_edges(0), self.get_edges(1), self.get_times(), self.get_weights()):
+                if weights:
+                    f.write(f"{i.item()} {j.item()} {t.item()} {w.item()}\n")
+                else:
+                    f.write(f"{i.item()} {j.item()} {t.item()}\n")
+
     def print_info(self):
         """
         Print the dataset info
         """
+
+        min_count, max_count = utils.INF, -utils.INF
+        data_dict = self.get_data_dict(weights=True)
+        for i in data_dict:
+            for j in data_dict[i]:
+
+                min_count = min(min_count, len(data_dict[i][j]))
+                max_count = max(max_count, len(data_dict[i][j]))
+
         print(f"+ Dataset information")
         print(f"\t- Number of nodes: {self.__nodes_num}")
-        print(f"\t- Number of edges: {self.__edges.shape[1]}")
+        print(f"\t- Total number of events: {self.__edges.shape[1]}")
+        print(f"\t- Minimum number of events a pair has: {min_count}")
+        print(f"\t- Maximum number of events a pair has: {max_count}")
+        print(f"\t- Number of isolated nodes: {self.has_isolated_nodes()}")
         print(f"\t- Is directed: {self.__directed}")
         print(f"\t- Is signed: {self.__signed}")
         print(f"\t- Initial time: {self.__init_time}")
