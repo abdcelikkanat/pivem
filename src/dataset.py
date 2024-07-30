@@ -45,11 +45,29 @@ class Dataset:
 
     def read(self, path, normalize=True):
 
-        with open(os.path.join(path, 'events.pkl'), 'rb') as f:
-            self.__events = list(pkl.load(f))
+        # with open(os.path.join(path, 'events.pkl'), 'rb') as f:
+        #     self.__events = list(pkl.load(f))
+        #
+        # with open(os.path.join(path, 'pairs.pkl'), 'rb') as f:
+        #     self.__pairs = np.asarray(pkl.load(f), dtype=int).tolist()
 
-        with open(os.path.join(path, 'pairs.pkl'), 'rb') as f:
-            self.__pairs = np.asarray(pkl.load(f), dtype=int).tolist()
+        pair2events = {}
+        with open(path, 'r') as f:
+            for line in f:
+                i, j, t = line.strip().split()
+                if i > j:
+                    i, j = j, i
+                pair = (int(i), int(j))
+                if pair not in pair2events:
+                    pair2events[pair] = [float(t)]
+                else:
+                    pair2events[pair].append(torch.tensor(float(t)))
+
+        self.__pairs = []
+        self.__events = []
+        for pair, events in pair2events.items():
+            self.__pairs.append(pair)
+            self.__events.append(events)
 
         self.__nodes = np.unique(self.__pairs).tolist()
         self.__nodes_num = len(self.__nodes)
