@@ -124,10 +124,10 @@ with open(os.path.join(completion_folder, "events.pkl"), 'rb') as f:
 completion_pos_samples = [
     [
         completion_pairs[idx][0], completion_pairs[idx][1],
-        max(0, completion_events[idx]-event_interval),
-        min(last_time, completion_events[idx]+event_interval)
+        max(0, completion_events[idx][idx2]-event_interval),
+        min(last_time, completion_events[idx][idx2]+event_interval)
     ]
-    for idx in range(len(completion_pairs))
+    for idx in range(len(completion_pairs)) for idx2 in range(len(completion_events[idx]))
 ]
 
 # Construct the negative samples

@@ -66,7 +66,7 @@ class Dataset:
         self.__pairs = []
         self.__events = []
         for pair, events in pair2events.items():
-            self.__pairs.append(pair)
+            self.__pairs.append(list(pair))
             self.__events.append(events)
 
         self.__nodes = np.unique(self.__pairs).tolist()
